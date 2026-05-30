@@ -14,7 +14,7 @@ Signal logic (identical to leap_backtest_v5.py):
 Open positions are tracked in positions.json (same directory).
 """
 
-import os, sys, json, smtplib, warnings
+import os, sys, json, smtplib, warnings, requests
 warnings.filterwarnings("ignore")
 
 from datetime import datetime, timedelta, date
