@@ -22,16 +22,11 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from pathlib import Path
 
+import io
 import numpy as np
 import pandas as pd
 from scipy.stats import norm
 import yfinance as yf
-
-try:
-    from pandas_datareader import data as pdr
-    HAS_PDR = True
-except ImportError:
-    HAS_PDR = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
@@ -71,6 +66,30 @@ def bs_delta(S, K, T, r, σ):
     return float(norm.cdf(d1))
 
 
+# ── Rate data helpers ─────────────────────────────────────────────────────────
+
+def _fred_csv(series_id, start, end):
+    """Download a FRED series as a daily pandas Series via the public CSV endpoint."""
+    url = f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={series_id}"
+    r = requests.get(url, timeout=60, headers={"User-Agent": "Mozilla/5.0"})
+    r.raise_for_status()
+    df = pd.read_csv(io.StringIO(r.text), index_col=0, parse_dates=True)
+    df.columns = [series_id.lower()]
+    df.index = pd.to_datetime(df.index).tz_localize(None)
+    series = pd.to_numeric(df[series_id.lower()], errors="coerce").dropna()
+    return series[(series.index >= pd.Timestamp(start)) & (series.index <= pd.Timestamp(end))]
+
+
+def _yf_rate(ticker, start, end):
+    """Download a rate ticker from yfinance and return as a daily Series."""
+    df = yf.download(ticker, start=start, end=end, auto_adjust=True, progress=False)
+    if isinstance(df.columns, pd.MultiIndex):
+        df.columns = df.columns.get_level_values(0)
+    series = df["Close"].copy()
+    series.index = pd.to_datetime(series.index).tz_localize(None)
+    return series.dropna()
+
+
 # ── Data download ─────────────────────────────────────────────────────────────
 
 def download_data():
@@ -99,23 +118,22 @@ def download_data():
     data.index = pd.to_datetime(data.index).tz_localize(None)
     data["vvix"] = data["vvix"].ffill().fillna(100)
 
-    # 2yr Treasury from FRED
-    dgs2 = None
-    if HAS_PDR:
+    # 2yr Treasury — try FRED public CSV first, then yfinance ^FVX (5yr), then ^IRX (3mo)
+    dgs2_loaded = False
+    for attempt, (label, fetch) in enumerate([
+        ("FRED CSV (DGS2)", lambda: _fred_csv("DGS2", start, end)),
+        ("yfinance ^FVX (5yr proxy)", lambda: _yf_rate("^FVX", start, end)),
+        ("yfinance ^IRX (3mo proxy)", lambda: _yf_rate("^IRX", start, end)),
+    ]):
         try:
-            dgs2 = pdr.get_data_fred("DGS2", start=start, end=end)
-            dgs2.columns = ["dgs2"]
-            dgs2.index = pd.to_datetime(dgs2.index).tz_localize(None)
-            data["dgs2"] = dgs2["dgs2"].reindex(data.index, method="ffill")
-            print(f"  2yr yield (FRED): ok")
+            series = fetch()
+            if series is not None and len(series) > 50:
+                data["dgs2"] = series.reindex(data.index, method="ffill")
+                print(f"  2yr yield: {label} ✓")
+                dgs2_loaded = True
+                break
         except Exception as e:
-            print(f"  2yr yield: FRED failed ({e}) — using ^IRX")
-            dgs2 = None
-
-    if dgs2 is None:
-        irx = yf.download("^IRX", start=start, end=end, auto_adjust=True, progress=False)
-        if isinstance(irx.columns, pd.MultiIndex): irx.columns = irx.columns.get_level_values(0)
-        data["dgs2"] = irx["Close"].reindex(data.index, method="ffill")
+            print(f"  2yr yield: {label} failed — {e}")
 
     data["dgs2"] = pd.to_numeric(data["dgs2"], errors="coerce").ffill()
     return data
