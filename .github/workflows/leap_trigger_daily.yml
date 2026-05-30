@@ -1,0 +1,44 @@
+name: LEAP Trigger System — Daily Scanner
+
+on:
+  schedule:
+    # 21:30 UTC = 4:30 PM ET (UTC-5 EST) / 5:30 PM ET (UTC-4 EDT)
+    # Runs after market close every weekday with confirmed daily candle data
+    - cron: '30 21 * * 1-5'
+  workflow_dispatch:   # allows manual run from GitHub Actions UI
+
+jobs:
+  daily-scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install pandas-datareader
+
+      - name: Run daily LEAP scanner
+        env:
+          GMAIL_SENDER:       ${{ secrets.GMAIL_SENDER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+        run: |
+          cd "Jim - twitter"
+          python daily_scanner.py
+
+      - name: Upload scan log as artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: leap-scan-${{ github.run_id }}
+          path: "Jim - twitter/positions.json"
+          retention-days: 30

@@ -1,0 +1,13 @@
+[
+  {
+    "id": "example_remove_me",
+    "tranche": "T1",
+    "entry_date": "2025-03-12",
+    "entry_spy": 550.9,
+    "entry_vix": 24.2,
+    "K_itm": 496,
+    "entry_cost": 114.9,
+    "expiry_date": "2026-09-12",
+    "notes": "Mar 2025 tariff episode — REMOVE THIS EXAMPLE ROW"
+  }
+]
