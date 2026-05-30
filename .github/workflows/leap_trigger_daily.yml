@@ -23,22 +23,18 @@ jobs:
           cache: 'pip'
 
       - name: Install dependencies
-        run: |
-          pip install -r requirements.txt
-          pip install pandas-datareader
+        run: pip install -r requirements.txt
 
       - name: Run daily LEAP scanner
         env:
           GMAIL_SENDER:       ${{ secrets.GMAIL_SENDER }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
-        run: |
-          cd "Jim - twitter"
-          python daily_scanner.py
+        run: python daily_scanner.py
 
       - name: Upload scan log as artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: leap-scan-${{ github.run_id }}
-          path: "Jim - twitter/positions.json"
+          path: positions.json
           retention-days: 30
